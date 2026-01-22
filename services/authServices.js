@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 
 const register = async (userData) => {
     try {
-         // check if email already exists
+        // check if email already exists
         const existingUser = await prisma.user.findUnique({
             where: { email: userData.email }
         });
@@ -93,4 +93,27 @@ const refreshToken = async (token) => {
     }
 };
 
-export default { login, register, refreshToken };
+const findOrCreateGoogleUser = async ({ googleId, fullName, email, avatar }) => {
+    try {
+        let user = await prisma.user.findFirst({
+            where: { email: email }
+        });
+
+        if (!user) {
+            user = await prisma.user.create({
+                data: {
+                    googleId,
+                    fullName,
+                    email,
+                    avatar
+                }
+            });
+        }
+
+        return user;
+    } catch (error) {
+        throw new Error("Error finding or creating Google user: " + error.message);
+    }
+};
+
+export default { login, register, refreshToken, findOrCreateGoogleUser};

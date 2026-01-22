@@ -6,6 +6,9 @@ import friendRoutes from './routes/friendRouters.js';
 import authRoutes from './routes/authRouters.js';
 import { authenticateAccessToken } from './middleware.js';
 import morgan from 'morgan';
+import passport from "passport";
+import "./config/passport.js";
+import "./jobs/cleanupBlacklist.js";
 
 const app = express();
 const port = 3000;
@@ -17,6 +20,9 @@ app.use(express.json());
 
 // HTTP request logger middleware
 app.use(morgan('dev'));
+
+// Passport middleware
+app.use(passport.initialize());
 
 // Basic route
 app.get('/', (req, res) => {

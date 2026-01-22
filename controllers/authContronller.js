@@ -1,5 +1,7 @@
 import { validateLogin, validateUser } from "../dtos/auth.js";
 import authServices from "../services/authServices.js";
+import jwt from 'jsonwebtoken';
+import { addTokenToBlacklist } from "../services/tokenBlacklistServices.js";
 
 const register = async (req, res) => {
     const { error } = validateUser(req.body);
@@ -70,20 +72,28 @@ const login = async (req, res) => {
     }
 };
 
-const logout = (req, res) => {
+const logout = async (req, res) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token) {
+        const decoded = jwt.decode(token);
+        const expiresAt = new Date(decoded.exp * 1000);
+        await addTokenToBlacklist(token, expiresAt);
+    }
+
     res.clearCookie('access_token');
     res.clearCookie('refresh_token');
     res.status(200).json({ message: 'Logout successful' });
 };
 
-const refreshToken = (req, res) => {
+const refreshToken = async (req, res) => {
     try {
         const refreshToken = req.cookies.refresh_token;
         if (!refreshToken) {
             return res.status(401).json({ message: 'No refresh token provided' });
         }
 
-        const newTokens = authServices.refreshToken(refreshToken);
+        const newTokens = await authServices.refreshToken(refreshToken);
         res.cookie('access_token', newTokens.accessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
@@ -102,4 +112,36 @@ const refreshToken = (req, res) => {
     }
 };
 
-export default { register, login, logout, refreshToken };
+const googleOAuthCallback = async (req, res) => {
+    const { displayName, emails, photos, id } = req.user;
+    const email = emails[0].value;
+    const avatar = photos[0].value;
+
+    let user = await authServices.findOrCreateGoogleUser({ googleId: id, fullName: displayName, email, avatar });
+
+    const accessToken = jwt.sign(
+        { id: user.id, email: user.email },
+        process.env.JWT_SECRET,
+        { expiresIn: "1h" }
+    );
+    const refreshToken = jwt.sign(
+        { id: user.id, email: user.email },
+        process.env.JWT_REFRESH_SECRET,
+        { expiresIn: "7d" }
+    );
+
+    res.cookie('access_token', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 3600000
+    });
+    res.cookie('refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 7 * 24 * 3600000
+    });
+
+    res.status(200).json({ message: "Login with Google successful", user, accessToken, refreshToken });
+};
+
+export default { register, login, logout, refreshToken, googleOAuthCallback };
