@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Main App -->
+    <div id="app-page" class="page active">
+        <div class="app-container">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Chat App</h2>
+                    <div class="user-info">
+                        <div class="user-avatar" id="currentUserAvatar"></div>
+                        <span id="currentUsername"></span>
+                    </div>
+                </div>
+
+                <div class="sidebar-nav">
+                    <button class="nav-btn active" data-view="friends">
+                        <span>👥</span> Bạn bè
+                    </button>
+                    <button class="nav-btn" data-view="incoming-requests">
+                        <span>📬</span> Lời mời đến
+                        <span class="badge" id="incomingBadge">0</span>
+                    </button>
+                    <button class="nav-btn" data-view="outgoing-requests">
+                        <span>📤</span> Đã gửi lời mời
+                        <span class="badge" id="outgoingBadge">0</span>
+                    </button>
+                    <button class="nav-btn" data-view="add-friend">
+                        <span>➕</span> Thêm bạn
+                    </button>
+                    <button class="nav-btn" data-view="profile">
+                        <span>👤</span> Hồ sơ
+                    </button>
+                </div>
+
+                <button class="logout-btn" id="logoutBtn">Đăng xuất</button>
+            </div>
+
+            <!-- Main Content -->
+            <div class="main-content">
+                <!-- Friends View -->
+                <div id="friends-view" class="view active">
+                    <div class="view-header">
+                        <h3>Danh sách bạn bè</h3>
+                        <div class="search-box">
+                            <input type="text" id="friendSearch" placeholder="Tìm kiếm bạn bè...">
+                        </div>
+                    </div>
+                    <div class="friends-list" id="friendsList">
+                        <!-- Friends will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Incoming Requests View -->
+                <div id="incoming-requests-view" class="view">
+                    <div class="view-header">
+                        <h3>Lời mời kết bạn đến</h3>
+                    </div>
+                    <div id="incoming-requests" class="requests-list">
+                        <!-- Incoming requests will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Outgoing Requests View -->
+                <div id="outgoing-requests-view" class="view">
+                    <div class="view-header">
+                        <h3>Lời mời kết bạn đã gửi</h3>
+                    </div>
+                    <div id="outgoing-requests" class="requests-list">
+                        <!-- Outgoing requests will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Add Friend View -->
+                <div id="add-friend-view" class="view">
+                    <div class="view-header">
+                        <h3>Thêm bạn bè</h3>
+                    </div>
+                    <div class="add-friend-container">
+                        <div class="search-box large">
+                            <input type="text" id="userSearch" placeholder="Tìm kiếm theo email hoặc tên...">
+                            <button class="btn btn-primary" id="searchUserBtn">Tìm kiếm</button>
+                        </div>
+                        <div id="searchResults" class="search-results">
+                            <!-- Search results will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Profile View -->
+                <div id="profile-view" class="view">
+                    <div class="view-header">
+                        <h3>Hồ sơ của tôi</h3>
+                    </div>
+                    <div class="profile-container">
+                        <div class="profile-avatar-large" id="profileAvatar"></div>
+                        <div class="profile-info">
+                            <div class="profile-field">
+                                <label>Tên người dùng:</label>
+                                <span id="profileUsername"></span>
+                            </div>
+                            <div class="profile-field">
+                                <label>Email:</label>
+                                <span id="profileEmail"></span>
+                            </div>
+                            <div class="profile-field">
+                                <label>Vai trò:</label>
+                                <span id="profileRole"></span>
+                            </div>
+                            <div class="profile-field">
+                                <label>Tham gia:</label>
+                                <span id="profileCreatedAt"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Panel -->
+            <div class="chat-panel" id="chatPanel">
+                <div class="chat-header">
+                    <div class="chat-user-info">
+                        <div class="user-avatar small" id="chatUserAvatar"></div>
+                        <div>
+                            <h4 id="chatUsername"></h4>
+                            <span class="status" id="chatUserStatus">Offline</span>
+                        </div>
+                    </div>
+                    <button class="close-chat" id="closeChatBtn">✕</button>
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Messages will be loaded here -->
+                </div>
+
+                <div class="chat-input">
+                    <input type="text" id="messageInput" placeholder="Nhập tin nhắn...">
+                    <button class="btn btn-primary" id="sendMessageBtn">Gửi</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script type="module" src="js/pages/app.js"></script>
+</body>
+</html>

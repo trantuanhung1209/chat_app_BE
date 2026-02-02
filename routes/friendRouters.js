@@ -4,7 +4,13 @@ import friendController from '../controllers/friendController.js';
 const router = express.Router();
 
 // get friend list
-router.get('/', friendController.getFriendList); // To be implemented
+router.get('/', friendController.getFriendList);
+
+// check friendship status with a user
+router.get('/status/:userId', friendController.getFriendshipStatus); // To be implemented
+
+// get public friends of a user
+router.get('/public/:name', friendController.getPublicFriendsByName); // To be implemented
 
 // get resquests incoming
 router.get('/requests/incoming', friendController.getIncomingRequests);

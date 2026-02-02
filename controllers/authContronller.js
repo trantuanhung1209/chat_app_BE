@@ -2,11 +2,12 @@ import { validateLogin, validateUser } from "../dtos/auth.js";
 import authServices from "../services/authServices.js";
 import jwt from 'jsonwebtoken';
 import { addTokenToBlacklist } from "../services/tokenBlacklistServices.js";
+import { successResponse, errorResponse } from '../helpers/responseHelper.js';
 
 const register = async (req, res) => {
     const { error } = validateUser(req.body);
     if (error) {
-        return res.status(400).json({ errors: error.details.map(e => e.message) });
+        return errorResponse(res, 400, 'Validation failed', error.details.map(e => e.message));
     }
 
     try {
@@ -29,10 +30,14 @@ const register = async (req, res) => {
             maxAge: 7 * 24 * 3600000 // 7 days
         });
 
-        res.status(201).json({ message: 'User registered successfully', user: createdUser.user, accessToken: createdUser.accessToken, refreshToken: createdUser.refreshToken });
+        return successResponse(res, 201, 'User registered successfully', {
+            userId: createdUser.user.id,
+            accessToken: createdUser.accessToken,
+            refreshToken: createdUser.refreshToken
+        });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
@@ -40,7 +45,7 @@ const login = async (req, res) => {
     try {
         const { error } = validateLogin(req.body);
         if (error) {
-            return res.status(400).json({ message: error.details[0].message });
+            return errorResponse(res, 400, error.details[0].message);
         }
 
         const { email, password } = req.body;
@@ -65,10 +70,30 @@ const login = async (req, res) => {
             maxAge: 7 * 24 * 3600000 // 7 days
         });
 
-        res.status(200).json({ message: 'Login successful', user: resUser, accessToken, refreshToken });
+        return successResponse(res, 200, 'Login successful', {
+            userId: user.id,
+        });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        // Nếu là lỗi NO_PASSWORD_SET, trả về thông tin user để redirect sang đăng ký
+        if (error.message === 'NO_PASSWORD_SET') {
+            return errorResponse(res, 401, error.message, { needSetPassword: true, user: error.user });
+        }
+        return errorResponse(res, 500, error.message);
+    }
+};
+
+const getMe = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const user = await authServices.getUserById(userId);
+        if (user) {
+            return successResponse(res, 200, 'User retrieved successfully', user);
+        } else {
+            return errorResponse(res, 404, `User with id ${userId} not found`);
+        }
+    } catch (error) {
+        return errorResponse(res, 500, error.message);
     }
 };
 
@@ -83,14 +108,20 @@ const logout = async (req, res) => {
 
     res.clearCookie('access_token');
     res.clearCookie('refresh_token');
-    res.status(200).json({ message: 'Logout successful' });
+    return successResponse(res, 200, 'Logout successful');
 };
 
 const refreshToken = async (req, res) => {
     try {
-        const refreshToken = req.cookies.refresh_token;
+        // Lấy refresh token từ cookie hoặc body
+        let refreshToken = req.cookies.refresh_token;
+        
+        if (!refreshToken && req.body.refreshToken) {
+            refreshToken = req.body.refreshToken;
+        }
+        
         if (!refreshToken) {
-            return res.status(401).json({ message: 'No refresh token provided' });
+            return errorResponse(res, 401, 'No refresh token provided');
         }
 
         const newTokens = await authServices.refreshToken(refreshToken);
@@ -106,9 +137,9 @@ const refreshToken = async (req, res) => {
             maxAge: 7 * 24 * 3600000 // 7 days
         });
 
-        res.status(200).json({ accessToken: newTokens.accessToken, refreshToken: newTokens.refreshToken });
+        return successResponse(res, 200, 'Token refreshed successfully');
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
@@ -141,7 +172,9 @@ const googleOAuthCallback = async (req, res) => {
         maxAge: 7 * 24 * 3600000
     });
 
-    res.status(200).json({ message: "Login with Google successful", user, accessToken, refreshToken });
+    // Redirect về FE với token trong query params
+    const frontendURL = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return res.redirect(`${frontendURL}/FE/login.html?accessToken=${accessToken}&refreshToken=${refreshToken}`);
 };
 
-export default { register, login, logout, refreshToken, googleOAuthCallback };
+export default { register, login, logout, refreshToken, googleOAuthCallback, getMe };

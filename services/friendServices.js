@@ -1,7 +1,14 @@
 import { prisma } from "../config/db.js";
+import logger from '../config/logger.js';
 
 const sendFriendRequest = async (fromUserId, toUserId) => {
     if (fromUserId === toUserId) {
+        logger.error('send_friend_request_failed', {
+            msg: 'Cannot send friend request to yourself',
+            fromUserId,
+            toUserId,
+            status_code: 400
+        });
         throw new Error("Cannot send friend request to yourself.");
     }
 
@@ -15,6 +22,12 @@ const sendFriendRequest = async (fromUserId, toUserId) => {
         }
     });
     if (blocked) {
+        logger.error('send_friend_request_failed', {
+            msg: 'Blocked relationship',
+            fromUserId,
+            toUserId,
+            status_code: 400
+        });
         throw new Error("Cannot send friend request. One of the users has blocked the other.");
     }
 
@@ -29,19 +42,38 @@ const sendFriendRequest = async (fromUserId, toUserId) => {
         }
     });
     if (existingRequest) {
+        logger.error('send_friend_request_failed', {
+            msg: 'Friend request already exists or already friends',
+            fromUserId,
+            toUserId,
+            status_code: 400
+        });
         throw new Error("Friend request already exists or you are already friends.");
     }
 
     // create new friend request
     try {
-        return await prisma.friendRequest.create({
+        const request = await prisma.friendRequest.create({
             data: {
                 senderId: fromUserId,
                 receiverId: toUserId,
                 status: 'pending'
             }
         });
+        logger.info('send_friend_request_success', {
+            fromUserId,
+            toUserId,
+            requestId: request.id,
+            status_code: 201
+        });
+        return request;
     } catch (error) {
+        logger.error('send_friend_request_failed', {
+            fromUserId,
+            toUserId,
+            status_code: 500,
+            error: { name: error.name, message: error.message }
+        });
         throw new Error("Error sending friend request: " + error.message);
     }
 };
@@ -54,6 +86,11 @@ const acceptFriendRequest = async (requestId) => {
         });
         return request;
     } catch (error) {
+        logger.error('accept_friend_request_failed', {
+            requestId,
+            status_code: 500,
+            error: { name: error.name, message: error.message }
+        });
         throw new Error("Error accepting friend request: " + error.message);
     }
 };
@@ -181,9 +218,26 @@ const unblockFriend = async (userId, friendId) => {
     }
 };
 
-const getAllFriends = async (userId) => {
+const getFriendsList = async (userId, skip, limit, sortField = 'createdAt', sortOrder = 'asc', name = null) => {
     try {
         const friends = await prisma.friendRequest.findMany({
+            where: {
+                OR: [
+                    { senderId: userId, status: 'accepted' },
+                    { receiverId: userId, status: 'accepted' }
+                ]
+            }, 
+            skip,
+            take: limit, 
+            orderBy: {
+                [sortField]: sortOrder
+            }
+        });
+
+        const friendIds = friends.map(fr => (fr.senderId === userId ? fr.receiverId : fr.senderId));
+
+        // count total friends
+        const totalFriends = await prisma.friendRequest.count({
             where: {
                 OR: [
                     { senderId: userId, status: 'accepted' },
@@ -192,10 +246,21 @@ const getAllFriends = async (userId) => {
             }
         });
 
-        const friendIds = friends.map(fr => (fr.senderId === userId ? fr.receiverId : fr.senderId));
+        // Build where clause cho user query
+        const userWhereClause = {
+            id: { in: friendIds }
+        };
 
-        return await prisma.user.findMany({
-            where: { id: { in: friendIds } },
+        // Nếu có name query, thêm điều kiện tìm kiếm
+        if (name) {
+            userWhereClause.OR = [
+                { fullName: { contains: name, mode: 'insensitive' } },
+                { email: { contains: name, mode: 'insensitive' } }
+            ];
+        }
+
+        const users = await prisma.user.findMany({
+            where: userWhereClause,
             select: {
                 id: true,
                 fullName: true,
@@ -204,12 +269,23 @@ const getAllFriends = async (userId) => {
                 createdAt: true
             }
         });
+
+        // Count total với filter
+        const filteredTotal = users.length;
+
+        return {
+            data: users,
+            total: filteredTotal,
+            totalPages: Math.ceil(filteredTotal / limit),
+            limit,
+            skip
+        };
     } catch (error) {
         throw new Error("Error fetching friend list: " + error.message);
     }
 };
 
-const getIncomingRequests = async (userId) => {
+const getIncomingRequests = async (userId, skip = 0, limit = 10) => {
     try {
         const requests = await prisma.friendRequest.findMany({
             where: {
@@ -226,19 +302,34 @@ const getIncomingRequests = async (userId) => {
                         createdAt: true
                     }
                 }
+            },
+            skip,
+            take: limit
+        });
+
+        const total = await prisma.friendRequest.count({
+            where: {
+                receiverId: userId,
+                status: 'pending'
             }
         });
 
-        return requests.map(req => ({
-            requestId: req.id,
-            sender: req.sender
-        }));
+        return {
+            data: requests.map(req => ({
+                requestId: req.id,
+                sender: req.sender,
+            })),
+            total,
+            totalPages: Math.ceil(total / limit),
+            limit,
+            skip
+        };
     } catch (error) {
         throw new Error("Error fetching incoming requests: " + error.message);
     }
 };
 
-const getOutgoingRequests = async (userId) => {
+const getOutgoingRequests = async (userId, skip = 0, limit = 10) => {
     try {
         const requests = await prisma.friendRequest.findMany({
             where: {
@@ -255,15 +346,95 @@ const getOutgoingRequests = async (userId) => {
                         createdAt: true
                     }
                 }
+            },
+            skip,
+            take: limit
+        });
+
+        const total = await prisma.friendRequest.count({
+            where: {
+                senderId: userId,
+                status: 'pending'
             }
         });
 
-        return requests.map(req => ({
-            requestId: req.id,
-            receiver: req.receiver
-        }));
+        return {
+            data: requests.map(req => ({
+                requestId: req.id,
+                receiver: req.receiver,
+            })),
+            total,
+            totalPages: Math.ceil(total / limit),
+            limit,
+            skip
+        };
     } catch (error) {
         throw new Error("Error fetching outgoing requests: " + error.message);
+    }
+};
+
+const getFriendshipStatus = async (userId, targetUserId) => {
+    try {
+        // Kiểm tra quan hệ giữa 2 user
+        const relationship = await prisma.friendRequest.findFirst({
+            where: {
+                OR: [
+                    { senderId: userId, receiverId: targetUserId },
+                    { senderId: targetUserId, receiverId: userId }
+                ]
+            }
+        });
+
+        if (!relationship) {
+            return { status: 'none', message: 'No relationship' };
+        }
+
+        if (relationship.status === 'accepted') {
+            return { status: 'friends', message: 'Already friends' };
+        }
+
+        if (relationship.status === 'blocked') {
+            if (relationship.senderId === userId) {
+                return { status: 'blocked_by_me', message: 'You blocked this user' };
+            } else {
+                return { status: 'blocked_by_them', message: 'This user blocked you' };
+            }
+        }
+
+        if (relationship.status === 'pending') {
+            if (relationship.senderId === userId) {
+                return { status: 'pending_sent', message: 'Friend request sent', requestId: relationship.id };
+            } else {
+                return { status: 'pending_received', message: 'Friend request received', requestId: relationship.id };
+            }
+        }
+
+        return { status: 'unknown', message: 'Unknown status' };
+    } catch (error) {
+        throw new Error("Error checking friendship status: " + error.message);
+    }
+};
+
+const getPublicFriendsByName = async (name) => {
+    try {
+        const users = await prisma.user.findMany({
+            where: {
+                fullName: {
+                    contains: name,
+                    mode: 'insensitive'
+                }
+            },
+            select: {
+                id: true,
+                fullName: true,
+                email: true,
+                avatar: true,
+                createdAt: true
+            }
+        }); 
+        return users;
+    } catch (error) {
+        throw new Error("Error fetching public friends by name: " + error.message);
     }
 };
 
@@ -275,7 +446,9 @@ export default {
     removeFriend,
     blockFriend,
     unblockFriend,
-    getAllFriends,
+    getFriendsList,
     getIncomingRequests,
-    getOutgoingRequests
+    getOutgoingRequests,
+    getFriendshipStatus,
+    getPublicFriendsByName
 };

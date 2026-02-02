@@ -1,7 +1,7 @@
 import express from 'express'; 
 import passport from "passport";
 import authController from '../controllers/authContronller.js';
-import { authenticateRefreshToken } from '../middleware.js';
+import { authenticateRefreshToken, authenticateAccessToken } from '../middleware.js';
 
 const router = express.Router();
 
@@ -14,8 +14,11 @@ router.post('/login', authController.login);
 // logout route
 router.post('/logout', authController.logout);
 
+// me
+router.get('/me', authenticateAccessToken, authController.getMe);
+
 // refresh token route
-router.post('/refresh', authenticateRefreshToken, authController.refreshToken);
+router.post('/refresh', authController.refreshToken);
 
 // Google OAuth routes
 router.get('/google', 

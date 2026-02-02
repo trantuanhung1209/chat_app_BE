@@ -1,6 +1,7 @@
 import { prisma } from "../config/db.js";
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import logger from '../config/logger.js';
 
 const register = async (userData) => {
     try {
@@ -8,10 +9,48 @@ const register = async (userData) => {
         const existingUser = await prisma.user.findUnique({
             where: { email: userData.email }
         });
-        if (existingUser) {
+        
+        // Nếu user đã tồn tại và có password (đăng ký thường), báo lỗi
+        if (existingUser && existingUser.password) {
+            logger.error('register_failed', {
+                msg: 'Email already exists',
+                status_code: 400,
+                user_email: userData.email
+            });
             throw new Error("Email already exists");
         }
+        
+        // Nếu user đã tồn tại nhưng không có password (từ Google), update password
+        if (existingUser && !existingUser.password) {
+            const hashedPassword = await bcrypt.hash(userData.password, 10);
+            const updatedUser = await prisma.user.update({
+                where: { email: userData.email },
+                data: {
+                    password: hashedPassword,
+                    fullName: userData.fullName || existingUser.fullName
+                }
+            });
+            
+            const accessToken = jwt.sign(
+                { id: updatedUser.id, fullName: updatedUser.fullName, email: updatedUser.email, role: updatedUser.role },
+                process.env.JWT_SECRET,
+                { expiresIn: '1h' }
+            );
 
+            const refreshToken = jwt.sign(
+                { id: updatedUser.id, fullName: updatedUser.fullName, email: updatedUser.email, role: updatedUser.role },
+                process.env.JWT_REFRESH_SECRET,
+                { expiresIn: '7d' }
+            );
+
+            logger.info('register_password_updated', {
+                user_id: updatedUser.id,
+                status_code: 200
+            });
+            return { user: updatedUser, accessToken, refreshToken };
+        }
+
+        // Tạo user mới
         const hashedPassword = await bcrypt.hash(userData.password, 10);
 
         const user = await prisma.user.create({
@@ -24,19 +63,27 @@ const register = async (userData) => {
         });
 
         const accessToken = jwt.sign(
-            { id: user.id, fullName: user.fullName, email: user.email },
+            { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
 
         const refreshToken = jwt.sign(
-            { id: user.id, fullName: user.fullName, email: user.email },
+            { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
             process.env.JWT_REFRESH_SECRET,
             { expiresIn: '7d' }
         );
 
+        logger.info('register_success', {
+            user_id: user.id,
+            status_code: 201
+        });
         return { user, accessToken, refreshToken };
     } catch (error) {
+        logger.error('register_failed', {
+            status_code: 500,
+            error: { name: error.name, message: error.message }
+        });
         throw new Error("Error creating user: " + error.message);
     }
 };
@@ -47,25 +94,51 @@ const login = async (email, password) => {
             where: { email: email }
         });
 
-        console.log('Found user:', user);
+        logger.info('login_attempt', { user_email: email });
 
         if (!user) {
+            logger.error('login_failed', {
+                msg: 'User not found',
+                status_code: 401,
+                user_email: email
+            });
             throw new Error("Invalid username or password");
+        }
+
+        // Nếu user không có password (chỉ đăng ký qua Google)
+        if (!user.password) {
+            logger.error('login_failed', {
+                msg: 'No password set - Google account only',
+                status_code: 401,
+                user_email: email
+            });
+            const error = new Error("NO_PASSWORD_SET");
+            error.user = {
+                email: user.email,
+                fullName: user.fullName,
+                avatar: user.avatar
+            };
+            throw error;
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
+            logger.error('login_failed', {
+                msg: 'Password mismatch',
+                status_code: 401,
+                user_email: email
+            });
             throw new Error("Invalid username or password");
         }
 
         const accessToken = jwt.sign(
-            { id: user.id, fullName: user.fullName, email: user.email },
+            { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
 
         const refreshToken = jwt.sign(
-            { id: user.id, fullName: user.fullName, email: user.email },
+            { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
             process.env.JWT_REFRESH_SECRET,
             { expiresIn: '7d' }
         );
@@ -82,12 +155,19 @@ const refreshToken = async (token) => {
         const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
 
         const newAccessToken = jwt.sign(
-            { id: payload.id, fullName: payload.fullName, email: payload.email },
+            { id: payload.id, fullName: payload.fullName, email: payload.email, role: payload.role },
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
 
-        return { accessToken: newAccessToken, refreshToken: token };
+        // Tạo refresh token mới (token rotation)
+        const newRefreshToken = jwt.sign(
+            { id: payload.id, fullName: payload.fullName, email: payload.email, role: payload.role },
+            process.env.JWT_REFRESH_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        return { accessToken: newAccessToken, refreshToken: newRefreshToken };
     } catch (error) {
         throw new Error("Invalid refresh token: " + error.message);
     }
@@ -116,4 +196,23 @@ const findOrCreateGoogleUser = async ({ googleId, fullName, email, avatar }) => 
     }
 };
 
-export default { login, register, refreshToken, findOrCreateGoogleUser};
+const getUserById = async (userId) => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                fullName: true,
+                email: true,
+                avatar: true,
+                role: true,
+                createdAt: true
+            }
+        });
+        return user;
+    } catch (error) {
+        throw new Error("Error fetching user: " + error.message);
+    }
+};
+
+export default { login, register, refreshToken, findOrCreateGoogleUser, getUserById };

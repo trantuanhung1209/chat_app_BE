@@ -1,18 +1,37 @@
 import bcrypt from "bcrypt";
 import { prisma } from "../config/db.js";
+import logger from '../config/logger.js';
 
-const getAllUsers = async () => {
+const getAllUsers = async (skip, limit, sortField = 'createdAt', sortOrder = 'asc') => {
     try {
-        return await prisma.user.findMany({
+        const users = await prisma.user.findMany({
+            skip,
+            take: limit,
             select: {
                 id: true,
                 fullName: true,
                 email: true,
                 avatar: true,
                 createdAt: true
+            },
+            orderBy: {
+                [sortField]: sortOrder
             }
         });
+        const totalUsers = await prisma.user.count();
+        return {
+            users,
+            totalUsers,
+            currentPage: Math.floor(skip / limit) + 1,
+            totalPages: Math.ceil(totalUsers / limit),
+            limit,
+            skip
+        };
     } catch (error) {
+        logger.error('get_users_failed', {
+            status_code: 500,
+            error: { name: error.name, message: error.message }
+        });
         throw new Error("Error fetching users: " + error.message);
     }
 };
@@ -21,7 +40,7 @@ const createUser = async (userData) => {
     try {
         const hashedPassword = await bcrypt.hash(userData.password, 10);
 
-        return await prisma.user.create({
+        const user = await prisma.user.create({
             data: {
                 fullName: userData.fullName,
                 email: userData.email,
@@ -29,7 +48,16 @@ const createUser = async (userData) => {
                 avatar: userData.avatar || null
             }
         });
+        logger.info('create_user_success', {
+            user_id: user.id,
+            status_code: 201
+        });
+        return user;
     } catch (error) {
+        logger.error('create_user_failed', {
+            status_code: 500,
+            error: { name: error.name, message: error.message }
+        });
         throw new Error("Error creating user: " + error.message);
     }
 };
@@ -40,6 +68,11 @@ const deleteUserById = async (userId) => {
             where: { id: userId }
         });
     } catch (error) {
+        logger.error('delete_user_failed', {
+            user_id: userId,
+            status_code: 500,
+            error: { name: error.name, message: error.message }
+        });
         throw new Error("Error deleting user: " + error.message);
     }
 };
@@ -69,10 +102,121 @@ const getUserById = async (userId) => {
     }
 };
 
+const getUserByName = async (name) => {
+    try {
+        return await prisma.user.findMany({
+            where: {
+                fullName: {
+                    contains: name,
+                    mode: 'insensitive'
+                }
+            },
+            select: {
+                id: true,
+                fullName: true,
+                email: true,
+                avatar: true,
+                createdAt: true
+            }
+        });
+    } catch (error) {
+        throw new Error("Error fetching users by name: " + error.message);
+    }
+};
+
+const searchUsersForFriendRequest = async (currentUserId, searchQuery, skip = 0, limit = 20) => {
+    try {
+        // Lấy danh sách user có quan hệ với current user (bạn bè hoặc đã gửi/nhận lời mời)
+        const existingRelations = await prisma.friendRequest.findMany({
+            where: {
+                OR: [
+                    { senderId: currentUserId },
+                    { receiverId: currentUserId }
+                ]
+            },
+            select: {
+                senderId: true,
+                receiverId: true
+            }
+        });
+
+        // Tạo danh sách userId cần loại trừ
+        const excludeIds = new Set([currentUserId]); // Loại trừ bản thân
+        existingRelations.forEach(relation => {
+            excludeIds.add(relation.senderId);
+            excludeIds.add(relation.receiverId);
+        });
+
+        // Điều kiện tìm kiếm chung
+        const whereClause = {
+            AND: [
+                {
+                    id: {
+                        notIn: Array.from(excludeIds)
+                    }
+                },
+                {
+                    OR: [
+                        {
+                            fullName: {
+                                contains: searchQuery,
+                                mode: 'insensitive'
+                            }
+                        },
+                        {
+                            email: {
+                                contains: searchQuery,
+                                mode: 'insensitive'
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Đếm tổng số kết quả
+        const total = await prisma.user.count({
+            where: whereClause
+        });
+
+        // Tìm kiếm user theo tên hoặc email, loại trừ những user đã có quan hệ
+        const users = await prisma.user.findMany({
+            where: whereClause,
+            select: {
+                id: true,
+                fullName: true,
+                email: true,
+                avatar: true,
+                createdAt: true
+            },
+            skip,
+            take: limit
+        });
+
+        return {
+            data: users,
+            total,
+            totalPages: Math.ceil(total / limit),
+            limit,
+            skip
+        };
+    } catch (error) {
+        logger.error('search_users_for_friend_request_failed', {
+            currentUserId,
+            searchQuery,
+            status_code: 500,
+            error: { name: error.name, message: error.message }
+        });
+        throw new Error("Error searching users: " + error.message);
+    }
+};
+
 export default {
     getAllUsers,
     createUser,
     deleteUserById,
     updateUserById,
-    getUserById
+    getUserById,
+    getUserByName,
+    searchUsersForFriendRequest
 };

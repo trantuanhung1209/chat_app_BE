@@ -1,151 +1,212 @@
 
 import friendServices from '../services/friendServices.js';
 import { validateFriend } from '../dtos/friend.js';
+import { successResponse, errorResponse, paginatedResponse } from '../helpers/responseHelper.js';
 
 const sendFriendRequest = async (req, res) => {
     try {
-        const { error } = validateFriend(req.body);
-        if (error) {
-            return res.status(400).json({ message: error.details.map(detail => detail.message).join(', ') });
+        const { toUserId } = req.body;
+        if (!toUserId) {
+            return errorResponse(res, 400, 'toUserId is required');
         }
-        
-        const { fromUserId, toUserId } = req.body;
+
+        const fromUserId = req.user.id; // Lấy từ access token
 
         await friendServices.sendFriendRequest(fromUserId, toUserId);
-        res.status(200).json({ message: 'Friend request sent' });
+        return successResponse(res, 200, 'Friend request sent successfully');
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const acceptFriendRequest = async (req, res) => {
     try {
         const { requestId } = req.body;
+        
+        console.log('Accept friend request - requestId:', requestId);
+        
+        if (!requestId) {
+            return errorResponse(res, 400, 'requestId is required');
+        }
 
         await friendServices.acceptFriendRequest(requestId);
-        res.status(200).json({ message: 'Friend request accepted' });
+        return successResponse(res, 200, 'Friend request accepted successfully');
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Accept friend request error:', error);
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const rejectFriendRequest = async (req, res) => {
     try {
-        const { requestId, userId } = req.body;
+        const { requestId } = req.body;
 
-        if (!requestId || !userId) {
-            return res.status(400).json({ message: 'requestId and userId are required' });
+        if (!requestId) {
+            return errorResponse(res, 400, 'requestId is required');
         }
 
+        const userId = req.user.id; // Lấy từ access token
         await friendServices.rejectFriendRequest(requestId, userId);
-        res.status(200).json({ message: 'Friend request rejected' });
+        return successResponse(res, 200, 'Friend request rejected successfully');
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const cancelFriendRequest = async (req, res) => {
     try {
-        const { requestId, userId } = req.body;
+        const { requestId } = req.body;
 
-        if (!requestId || !userId) {
-            return res.status(400).json({ message: 'requestId and userId are required' });
+        if (!requestId) {
+            return errorResponse(res, 400, 'requestId is required');
         }
 
+        const userId = req.user.id; // Lấy từ access token
         await friendServices.cancelFriendRequest(requestId, userId);
-        res.status(200).json({ message: 'Friend request cancelled' });
+        return successResponse(res, 200, 'Friend request cancelled successfully');
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const removeFriend = async (req, res) => {
     try {
-        const { userId, friendId } = req.body;
+        const { friendId } = req.body;
 
-        if (!userId || !friendId) {
-            return res.status(400).json({ message: 'userId and friendId are required' });
+        if (!friendId) {
+            return errorResponse(res, 400, 'friendId is required');
         }
 
+        const userId = req.user.id; // Lấy từ access token
         await friendServices.removeFriend(userId, friendId);
-        res.status(200).json({ message: 'Friend removed' });
-        
+        return successResponse(res, 200, 'Friend removed successfully');
+
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const blockFriend = async (req, res) => {
     try {
-        const { userId, friendId } = req.body;
-        if (!userId || !friendId) {
-            return res.status(400).json({ message: 'userId and friendId are required' });
+        const { friendId } = req.body;
+        if (!friendId) {
+            return errorResponse(res, 400, 'friendId is required');
         }
 
+        const userId = req.user.id; // Lấy từ access token
         await friendServices.blockFriend(userId, friendId);
-        res.status(200).json({ message: 'Friend blocked' });
+        return successResponse(res, 200, 'Friend blocked successfully');
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const unblockFriend = async (req, res) => {
     try {
-        const { userId, friendId } = req.body;
-        if (!userId || !friendId) {
-            return res.status(400).json({ message: 'userId and friendId are required' });
+        const { friendId } = req.body;
+        if (!friendId) {
+            return errorResponse(res, 400, 'friendId is required');
         }
 
+        const userId = req.user.id; // Lấy từ access token
         await friendServices.unblockFriend(userId, friendId);
-        res.status(200).json({ message: 'Friend unblocked' });
+        return successResponse(res, 200, 'Friend unblocked successfully');
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const getFriendList = async (req, res) => {
     try {
-        const { userId } = req.body;
-        if (!userId) {
-            return res.status(400).json({ message: 'userId is required' });
-        }
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+        let sortField = req.query.sort || 'createdAt';
+        const sortOrder = req.query.order === 'desc' ? 'desc' : 'asc';
+        const userId = req.user.id; // Lấy từ access token
+        const name = req.query.name; // Lấy query parameter name
 
-        const friends = await friendServices.getAllFriends(userId);
-        res.status(200).json({ friends });
+        const result = await friendServices.getFriendsList(userId, skip, limit, sortField, sortOrder, name);
+        return paginatedResponse(res, 200, 'Friends retrieved successfully', result.data, {
+            total: result.total,
+            page: page,
+            totalPages: result.totalPages,
+            limit: result.limit
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const getIncomingRequests = async (req, res) => {
     try {
-        const { userId } = req.body;
-        if (!userId) {
-            return res.status(400).json({ message: 'userId is required' });
-        }
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+        const userId = req.user.id; // Lấy từ access token
 
-        const requests = await friendServices.getIncomingRequests(userId);
-        res.status(200).json({ requests });
+        const result = await friendServices.getIncomingRequests(userId, skip, limit);
+        return paginatedResponse(res, 200, 'Incoming requests retrieved successfully', result.data, {
+            total: result.total,
+            page: page,
+            totalPages: result.totalPages,
+            limit: result.limit
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const getOutgoingRequests = async (req, res) => {
     try {
-        const { userId } = req.body;
-        if (!userId) {
-            return res.status(400).json({ message: 'userId is required' });
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+        const userId = req.user.id; // Lấy từ access token
+
+        const result = await friendServices.getOutgoingRequests(userId, skip, limit);
+        return paginatedResponse(res, 200, 'Outgoing requests retrieved successfully', result.data, {
+            total: result.total,
+            page: page,
+            totalPages: result.totalPages,
+            limit: result.limit
+        });
+    } catch (error) {
+        return errorResponse(res, 500, error.message);
+    }
+};
+
+const getFriendshipStatus = async (req, res) => {
+    try {
+        const userId = req.user.id; // User đang logged in
+        const targetUserId = req.params.userId; // User cần check
+
+        if (!targetUserId) {
+            return errorResponse(res, 400, 'userId is required');
         }
 
-        const requests = await friendServices.getOutgoingRequests(userId);
-        res.status(200).json({ requests });
+        const status = await friendServices.getFriendshipStatus(userId, targetUserId);
+        return successResponse(res, 200, 'Friendship status retrieved successfully', status);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
+    }
+};
+
+const getPublicFriendsByName = async (req, res) => {
+    try {
+        const name = req.params.name;
+        if (!name) {
+            return errorResponse(res, 400, 'name is required');
+        }
+
+        const friends = await friendServices.getPublicFriendsByName(name);
+        return successResponse(res, 200, 'Public friends retrieved successfully', friends);
+    } catch (error) {
+        return errorResponse(res, 500, error.message);
     }
 };
 
@@ -159,5 +220,7 @@ export default {
     unblockFriend,
     getFriendList,
     getIncomingRequests,
-    getOutgoingRequests
+    getOutgoingRequests,
+    getFriendshipStatus,
+    getPublicFriendsByName
 };

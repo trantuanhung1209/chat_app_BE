@@ -1,20 +1,33 @@
 
 import userServices from '../services/userServices.js';
 import { validateUser } from '../dtos/user.js';
+import { successResponse, errorResponse, paginatedResponse } from '../helpers/responseHelper.js';
 
 const getUsers = async (req, res) => {
     try {
-        const users = await userServices.getAllUsers();
-        res.status(200).json(users);
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        let sortField = req.query.sort || 'createdAt';
+        const sortOrder = req.query.order === 'desc' ? 'desc' : 'asc';
+
+        const result = await userServices.getAllUsers(skip, limit, sortField, sortOrder);
+        return paginatedResponse(res, 200, 'Users retrieved successfully', result.users, {
+            total: result.totalUsers,
+            page: result.currentPage,
+            totalPages: result.totalPages,
+            limit: result.limit
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
 const createUser = async (req, res) => {
     const { error } = validateUser(req.body);
     if (error) {
-        return res.status(400).json({ errors: error.details.map(e => e.message) });
+        return errorResponse(res, 400, 'Validation failed', error.details.map(e => e.message));
     }
 
     try {
@@ -23,9 +36,9 @@ const createUser = async (req, res) => {
             fullName, email, password, avatar
         }
         const createdUser = await userServices.createUser(newUser);
-        res.status(201).json(createdUser);
+        return successResponse(res, 201, 'User created successfully', createdUser);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 }
 
@@ -33,9 +46,9 @@ const deleteUserById = async (req, res) => {
     try {
         const userId = req.params.id;
         await userServices.deleteUserById(userId);
-        res.status(200).json({ message: `User with id ${userId} deleted.` });
+        return successResponse(res, 200, `User with id ${userId} deleted successfully`);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 }
 
@@ -44,9 +57,9 @@ const updateUserById = async (req, res) => {
         const userId = req.params.id;
         const updateData = req.body;
         const updatedUser = await userServices.updateUserById(userId, updateData);
-        res.status(200).json({ message: `User with id ${userId} updated.`, user: updatedUser });
+        return successResponse(res, 200, `User with id ${userId} updated successfully`, updatedUser);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
     }
 };
 
@@ -55,12 +68,50 @@ const getUserById = async (req, res) => {
         const userId = req.params.id;
         const user = await userServices.getUserById(userId);
         if (user) {
-            res.status(200).json(user);
+            return successResponse(res, 200, 'User retrieved successfully', user);
         } else {
-            res.status(404).json({ message: `User with id ${userId} not found.` });
+            return errorResponse(res, 404, `User with id ${userId} not found`);
         }
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return errorResponse(res, 500, error.message);
+    }
+};
+
+const getUserByName = async (req, res) => {
+    try {
+        const name = req.params.name;
+        const users = await userServices.getUserByName(name);
+        return successResponse(res, 200, 'Users retrieved successfully', users);
+    } catch (error) {
+        return errorResponse(res, 500, error.message);
+    }
+};
+
+const searchUsers = async (req, res) => {
+    try {
+        const searchQuery = req.query.q || req.query.search || '';
+        console.log(searchQuery);
+        
+        
+        if (!searchQuery || searchQuery.trim().length === 0) {
+            return errorResponse(res, 400, 'Search query is required');
+        }
+
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const skip = (page - 1) * limit;
+
+        const currentUserId = req.user.id;
+        const result = await userServices.searchUsersForFriendRequest(currentUserId, searchQuery, skip, limit);
+        
+        return paginatedResponse(res, 200, 'Search results retrieved successfully', result.data, {
+            total: result.total,
+            page: page,
+            totalPages: result.totalPages,
+            limit: result.limit
+        });
+    } catch (error) {
+        return errorResponse(res, 500, error.message);
     }
 };
 
@@ -69,5 +120,7 @@ export default {
     createUser,
     deleteUserById,
     updateUserById,
-    getUserById
+    getUserById,
+    getUserByName,
+    searchUsers
 };
