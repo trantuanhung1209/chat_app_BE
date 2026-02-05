@@ -29,7 +29,22 @@ export function clearTokens() {
 }
 
 // API request wrapper (Cookie-based authentication)
-async function apiRequest(url, options = {}) {
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+    failedQueue.forEach(prom => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    
+    failedQueue = [];
+};
+
+async function apiRequest(url, options = {}, retryCount = 0) {
     const headers = {
         'Content-Type': 'application/json',
         ...options.headers,
@@ -38,7 +53,73 @@ async function apiRequest(url, options = {}) {
     const response = await fetch(`${API_URL}${url}`, {
         ...options,
         headers,
+        credentials: 'include', // Quan trọng: Cho phép gửi và nhận cookies
     });
+    
+    // Xử lý 401 - Unauthorized
+    if (response.status === 401 && retryCount === 0 && url !== '/auth/refresh' && url !== '/auth/login') {
+        // Kiểm tra xem có refreshToken không (trong cookie hoặc localStorage)
+        const hasRefreshToken = document.cookie.includes('refreshToken') || localStorage.getItem('refreshToken');
+        
+        if (!hasRefreshToken) {
+            // Không có refreshToken, redirect về login (nếu chưa ở trang login)
+            clearTokens();
+            const currentPage = window.location.pathname.split('/').pop();
+            if (currentPage !== 'login.html' && currentPage !== 'register.html') {
+                window.location.href = 'login.html';
+            }
+            throw new Error('No refresh token available');
+        }
+        
+        if (isRefreshing) {
+            // Nếu đang refresh, đợi refresh xong rồi retry
+            return new Promise((resolve, reject) => {
+                failedQueue.push({ resolve, reject });
+            }).then(() => {
+                return apiRequest(url, options, retryCount + 1);
+            }).catch(err => {
+                throw err;
+            });
+        }
+        
+        isRefreshing = true;
+        
+        try {
+            // Gọi refresh token
+            const refreshResponse = await fetch(`${API_URL}/auth/refresh`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include', // Gửi refresh token cookie
+                body: JSON.stringify({}),
+            });
+            
+            if (refreshResponse.ok) {
+                const refreshData = await refreshResponse.json();
+                
+                // Refresh thành công, cookies đã được cập nhật
+                isRefreshing = false;
+                processQueue(null, true);
+                
+                // Retry request ban đầu
+                return apiRequest(url, options, retryCount + 1);
+            } else {
+                throw new Error('Refresh token failed');
+            }
+        } catch (error) {
+            isRefreshing = false;
+            processQueue(error, null);
+            
+            // Refresh thất bại, redirect về login (nếu chưa ở trang login)
+            clearTokens();
+            const currentPage = window.location.pathname.split('/').pop();
+            if (currentPage !== 'login.html' && currentPage !== 'register.html') {
+                window.location.href = 'login.html';
+            }
+            throw error;
+        }
+    }
     
     return response;
 }
@@ -148,5 +229,31 @@ export async function removeFriend(friendId) {
 export async function searchUsers(query, page = 1, limit = 10) {
     const response = await apiRequest(`/users/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
     if (!response.ok) throw new Error('Failed to search users');
+    return response.json();
+}
+
+export async function updateUser(userId, userData) {
+    const response = await apiRequest(`/users/${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(userData),
+    });
+    if (!response.ok) throw new Error('Failed to update user');
+    return response.json();
+}
+
+// Change Password APIs
+export async function changePassword(currentPassword, newPassword, confirmPassword) {
+    const response = await apiRequest('/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+    });
+    return response.json();
+}
+
+export async function setPasswordFirstTime(newPassword, confirmPassword) {
+    const response = await apiRequest('/change-password/set', {
+        method: 'POST',
+        body: JSON.stringify({ newPassword, confirmPassword }),
+    });
     return response.json();
 }

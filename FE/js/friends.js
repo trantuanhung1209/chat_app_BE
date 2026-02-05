@@ -1,6 +1,7 @@
 import * as api from './api.js';
 import { showToast, getAvatar, getColorForUser } from './utils.js';
 import { reloadFriends, reloadRequests } from './auth.js';
+import { emitFriendRequestSent } from './socket.js';
 
 // Send Friend Request
 export async function sendFriendRequest(userId) {
@@ -9,6 +10,8 @@ export async function sendFriendRequest(userId) {
         
         if (data.success || data.message) {
             showToast('Đã gửi lời mời kết bạn', 'success');
+            // Emit socket event
+            emitFriendRequestSent(userId);
             reloadRequests();
         } else {
             showToast(data.message || 'Không thể gửi lời mời', 'error');
@@ -100,7 +103,7 @@ export function displayFriends(friendsList) {
     if (!friendsList || friendsList.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">👥</div>
+                <div class="empty-state-icon"><i class="fas fa-user-friends fa-3x"></i></div>
                 <h3>Chưa có bạn bè</h3>
                 <p>Hãy thêm bạn bè để bắt đầu trò chuyện!</p>
             </div>
@@ -149,7 +152,7 @@ export function displayIncomingRequests(requests) {
     if (!requests || requests.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">📭</div>
+                <div class="empty-state-icon"><i class="fas fa-inbox fa-3x"></i></div>
                 <h3>Không có lời mời nào</h3>
             </div>
         `;
@@ -202,7 +205,7 @@ export function displayOutgoingRequests(response) {
     if (!requests || requests.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">📭</div>
+                <div class="empty-state-icon"><i class="fas fa-paper-plane fa-3x"></i></div>
                 <h3>Chưa gửi lời mời nào</h3>
             </div>
         `;
@@ -275,6 +278,7 @@ export function filterFriends(query, allFriends) {
 
 // Update Request Badge
 export function updateRequestBadge(incomingCount, outgoingCount) {
+    document.getElementById('requestBadge').textContent = incomingCount;
     document.getElementById('incomingBadge').textContent = incomingCount;
     document.getElementById('outgoingBadge').textContent = outgoingCount;
 }

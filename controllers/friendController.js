@@ -2,6 +2,7 @@
 import friendServices from '../services/friendServices.js';
 import { validateFriend } from '../dtos/friend.js';
 import { successResponse, errorResponse, paginatedResponse } from '../helpers/responseHelper.js';
+import { emitToUser } from '../services/socketHelperServices.js';
 
 const sendFriendRequest = async (req, res) => {
     try {
@@ -9,11 +10,20 @@ const sendFriendRequest = async (req, res) => {
         if (!toUserId) {
             return errorResponse(res, 400, 'toUserId is required');
         }
-
         const fromUserId = req.user.id; // Lấy từ access token
 
-        await friendServices.sendFriendRequest(fromUserId, toUserId);
-        return successResponse(res, 200, 'Friend request sent successfully');
+        const result = await friendServices.sendFriendRequest(fromUserId, toUserId);
+        
+        // Emit socket event đến người nhận
+        emitToUser(toUserId, 'friend-request-received', {
+            requestId: result.id,
+            fromUserId: fromUserId,
+            fromUserName: req.user.fullName || req.user.username,
+            fromUserEmail: req.user.email,
+            message: `${req.user.fullName || req.user.username} sent you a friend request`
+        });
+        
+        return successResponse(res, 200, 'Friend request sent successfully', result);
 
     } catch (error) {
         return errorResponse(res, 500, error.message);
@@ -30,8 +40,17 @@ const acceptFriendRequest = async (req, res) => {
             return errorResponse(res, 400, 'requestId is required');
         }
 
-        await friendServices.acceptFriendRequest(requestId);
-        return successResponse(res, 200, 'Friend request accepted successfully');
+        const result = await friendServices.acceptFriendRequest(requestId);
+        
+        // Emit socket event đến người gửi request
+        emitToUser(result.senderId, 'friend-request-accepted', {
+            requestId: requestId,
+            acceptedBy: req.user.id,
+            acceptedByName: req.user.fullName || req.user.username,
+            message: `${req.user.fullName || req.user.username} accepted your friend request`
+        });
+        
+        return successResponse(res, 200, 'Friend request accepted successfully', result);
 
     } catch (error) {
         console.error('Accept friend request error:', error);
@@ -48,7 +67,16 @@ const rejectFriendRequest = async (req, res) => {
         }
 
         const userId = req.user.id; // Lấy từ access token
-        await friendServices.rejectFriendRequest(requestId, userId);
+        const result = await friendServices.rejectFriendRequest(requestId, userId);
+        
+        // Emit socket event đến người gửi request
+        emitToUser(result.senderId, 'friend-request-rejected', {
+            requestId: requestId,
+            rejectedBy: userId,
+            rejectedByName: req.user.fullName || req.user.username,
+            message: `${req.user.fullName || req.user.username} rejected your friend request`
+        });
+        
         return successResponse(res, 200, 'Friend request rejected successfully');
 
     } catch (error) {
@@ -65,7 +93,16 @@ const cancelFriendRequest = async (req, res) => {
         }
 
         const userId = req.user.id; // Lấy từ access token
-        await friendServices.cancelFriendRequest(requestId, userId);
+        const result = await friendServices.cancelFriendRequest(requestId, userId);
+        
+        // Emit socket event đến người nhận
+        emitToUser(result.receiverId, 'friend-request-cancelled', {
+            requestId: requestId,
+            cancelledBy: userId,
+            cancelledByName: req.user.fullName || req.user.username,
+            message: `${req.user.fullName || req.user.username} cancelled the friend request`
+        });
+        
         return successResponse(res, 200, 'Friend request cancelled successfully');
 
     } catch (error) {
@@ -83,6 +120,14 @@ const removeFriend = async (req, res) => {
 
         const userId = req.user.id; // Lấy từ access token
         await friendServices.removeFriend(userId, friendId);
+        
+        // Emit socket event đến người bị remove
+        emitToUser(friendId, 'friend-removed', {
+            removedBy: userId,
+            removedByName: req.user.fullName || req.user.username,
+            message: `${req.user.fullName || req.user.username} removed you from friends`
+        });
+        
         return successResponse(res, 200, 'Friend removed successfully');
 
     } catch (error) {
@@ -99,6 +144,14 @@ const blockFriend = async (req, res) => {
 
         const userId = req.user.id; // Lấy từ access token
         await friendServices.blockFriend(userId, friendId);
+        
+        // Emit socket event đến người bị block
+        emitToUser(friendId, 'friend-blocked', {
+            blockedBy: userId,
+            blockedByName: req.user.fullName || req.user.username,
+            message: `You have been blocked by ${req.user.fullName || req.user.username}`
+        });
+        
         return successResponse(res, 200, 'Friend blocked successfully');
     } catch (error) {
         return errorResponse(res, 500, error.message);
@@ -175,6 +228,7 @@ const getOutgoingRequests = async (req, res) => {
             totalPages: result.totalPages,
             limit: result.limit
         });
+        
     } catch (error) {
         return errorResponse(res, 500, error.message);
     }

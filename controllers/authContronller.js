@@ -21,12 +21,16 @@ const register = async (req, res) => {
         res.cookie('access_token', createdUser.accessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
             maxAge: 3600000 // 1 hour
         });
 
         res.cookie('refresh_token', createdUser.refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
             maxAge: 7 * 24 * 3600000 // 7 days
         });
 
@@ -61,12 +65,16 @@ const login = async (req, res) => {
         res.cookie('access_token', accessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
             maxAge: 3600000 // 1 hour
         });
 
         res.cookie('refresh_token', refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
             maxAge: 7 * 24 * 3600000 // 7 days
         });
 
@@ -106,8 +114,8 @@ const logout = async (req, res) => {
         await addTokenToBlacklist(token, expiresAt);
     }
 
-    res.clearCookie('access_token');
-    res.clearCookie('refresh_token');
+    res.clearCookie('access_token', { path: '/' });
+    res.clearCookie('refresh_token', { path: '/' });
     return successResponse(res, 200, 'Logout successful');
 };
 
@@ -128,12 +136,16 @@ const refreshToken = async (req, res) => {
         res.cookie('access_token', newTokens.accessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
             maxAge: 3600000 // 1 hour
         });
 
         res.cookie('refresh_token', newTokens.refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
             maxAge: 7 * 24 * 3600000 // 7 days
         });
 
@@ -164,17 +176,22 @@ const googleOAuthCallback = async (req, res) => {
     res.cookie('access_token', accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
         maxAge: 3600000
     });
     res.cookie('refresh_token', refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
         maxAge: 7 * 24 * 3600000
     });
 
-    // Redirect về FE với token trong query params
+    // Redirect về FE với flag needSetPassword nếu cần (cookies đã được set)
     const frontendURL = process.env.FRONTEND_URL || 'http://localhost:3000';
-    return res.redirect(`${frontendURL}/FE/login.html?accessToken=${accessToken}&refreshToken=${refreshToken}`);
+    const needSetPassword = !user.password ? 'true' : 'false';
+    return res.redirect(`${frontendURL}/FE/login.html?needSetPassword=${needSetPassword}`);
 };
 
 export default { register, login, logout, refreshToken, googleOAuthCallback, getMe };

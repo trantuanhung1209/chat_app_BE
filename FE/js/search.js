@@ -27,7 +27,7 @@ export async function searchUsers(page = 1) {
         const resultsDiv = document.getElementById('searchResults');
         resultsDiv.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">❌</div>
+                <div class="empty-state-icon"><i class="fas fa-exclamation-triangle fa-3x"></i></div>
                 <h3>Lỗi tìm kiếm</h3>
                 <p>Không thể tìm kiếm người dùng. Vui lòng thử lại.</p>
             </div>
@@ -44,7 +44,7 @@ function displaySearchResults(response) {
     if (users.length === 0) {
         resultsDiv.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">🔍</div>
+                <div class="empty-state-icon"><i class="fas fa-search fa-3x"></i></div>
                 <h3>Không tìm thấy kết quả</h3>
                 <p>Không có người dùng nào phù hợp với từ khóa "${currentQuery}"</p>
             </div>

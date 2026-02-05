@@ -19,9 +19,8 @@ router.post('/', userController.createUser);
 
 // delete user by id (optional)
 router.delete('/:id', authenticateAccessToken, authorizeRoles('ADMIN'), userController.deleteUserById);
+
 // update user by id (optional)
 router.patch('/:id', authenticateAccessToken, userController.updateUserById);
 
-//get user by name (optional)
-router.get('/name/:name', userController.getUserByName);
 export default router;

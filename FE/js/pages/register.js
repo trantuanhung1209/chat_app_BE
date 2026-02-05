@@ -1,6 +1,7 @@
 // Register Page
 import * as api from '../api.js';
 import { showToast, getCookie } from '../utils.js';
+import { validateFormData, sanitizeInput } from '../validation.js';
 
 // Check if already logged in
 const tokens = api.getTokens();
@@ -47,13 +48,28 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     const password = document.getElementById('register-password').value;
     const confirmPassword = document.getElementById('register-confirm-password').value;
     
+    // Validate input
+    const validation = validateFormData(
+        { fullName: username, email, password },
+        { fullName: true, email: true, password: true }
+    );
+    
+    if (!validation.valid) {
+        showToast(validation.errors[0], 'error');
+        return;
+    }
+    
     if (password !== confirmPassword) {
         showToast('Mật khẩu không khớp', 'error');
         return;
     }
     
+    // Sanitize input trước khi gửi
+    const sanitizedUsername = sanitizeInput(username);
+    const sanitizedEmail = email.trim().toLowerCase();
+    
     try {
-        const data = await api.register(username, email, password);
+        const data = await api.register(sanitizedUsername, sanitizedEmail, password);
         
         if (data.success || data.data) {
             // Lấy token từ response body nếu có
@@ -65,7 +81,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
                 api.setTokens(accessToken, refreshToken);
                 showToast('Đăng ký thành công! Đang chuyển đến app...', 'success');
                 setTimeout(() => {
-                    window.location.href = 'app.html';
+                    window.location.reload();
                 }, 1500);
             } else {
                 // Đăng ký mới thông thường - tự động đăng nhập và chuyển về trang chủ

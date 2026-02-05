@@ -1,5 +1,6 @@
 // API Configuration
 export const API_URL = 'http://localhost:3000';
+export const SOCKET_URL = 'http://localhost:4000'; // Socket server port
 
 // App Configuration
 export const CONFIG = {

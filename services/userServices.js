@@ -45,7 +45,8 @@ const createUser = async (userData) => {
                 fullName: userData.fullName,
                 email: userData.email,
                 password: hashedPassword,
-                avatar: userData.avatar || null
+                avatar: userData.avatar || null,
+                type: 'EMAIL'
             }
         });
         logger.info('create_user_success', {
@@ -79,13 +80,28 @@ const deleteUserById = async (userId) => {
 
 const updateUserById = async (userId, updateData) => {
     try {
-        if (updateData.password) {
-            updateData.password = await bcrypt.hash(updateData.password, 10);
+        // Chỉ cho phép update fullName và avatar
+        const allowedData = {};
+        
+        if (updateData.fullName !== undefined) {
+            allowedData.fullName = updateData.fullName;
+        }
+        
+        if (updateData.avatar !== undefined) {
+            allowedData.avatar = updateData.avatar;
         }
 
         return await prisma.user.update({
             where: { id: userId },
-            data: updateData
+            data: allowedData,
+            select: {
+                id: true,
+                fullName: true,
+                email: true,
+                avatar: true,
+                role: true,
+                createdAt: true
+            }
         });
     } catch (error) {
         throw new Error("Error updating user: " + error.message);

@@ -12,6 +12,11 @@ datasource db {
   provider = "postgresql"
 }
 
+enum authProvider {
+  EMAIL
+  GOOGLE
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -22,7 +27,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   role      String   @default("USER")
-
+  typeAuth   authProvider @default(EMAIL)
   sentRequests     FriendRequest[] @relation("SentRequests")
   receivedRequests FriendRequest[] @relation("ReceivedRequests")
 }
@@ -50,4 +55,14 @@ model TokenBlacklist {
   token     String   @unique
   createdAt DateTime @default(now())
   expiresAt DateTime
+}
+model PasswordReset {
+  id        String   @id @default(uuid())
+  email     String
+  otp       String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  
+  @@index([email])
 }

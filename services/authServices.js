@@ -58,7 +58,8 @@ const register = async (userData) => {
                 fullName: userData.fullName,
                 email: userData.email,
                 password: hashedPassword,
-                avatar: userData.avatar || null
+                avatar: userData.avatar || null,
+                typeAuth: 'EMAIL'
             }
         });
 
@@ -131,19 +132,31 @@ const login = async (email, password) => {
             throw new Error("Invalid username or password");
         }
 
+        // Update authProvider thành EMAIL khi login
+        const updatedUser = await prisma.user.update({
+            where: { id: user.id },
+            data: { typeAuth: 'EMAIL' }
+        });
+
         const accessToken = jwt.sign(
-            { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
+            { id: updatedUser.id, fullName: updatedUser.fullName, email: updatedUser.email, role: updatedUser.role },
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
 
         const refreshToken = jwt.sign(
-            { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
+            { id: updatedUser.id, fullName: updatedUser.fullName, email: updatedUser.email, role: updatedUser.role },
             process.env.JWT_REFRESH_SECRET,
             { expiresIn: '7d' }
         );
 
-        return { user, accessToken, refreshToken };
+        logger.info('login_success', {
+            user_id: updatedUser.id,
+            auth_provider: 'EMAIL',
+            status_code: 200
+        });
+
+        return { user: updatedUser, accessToken, refreshToken };
     } catch (error) {
         throw new Error("Login error: " + error.message);
     }
@@ -180,13 +193,34 @@ const findOrCreateGoogleUser = async ({ googleId, fullName, email, avatar }) => 
         });
 
         if (!user) {
+            // Tạo user mới với typeAuth GOOGLE
             user = await prisma.user.create({
                 data: {
                     googleId,
                     fullName,
                     email,
-                    avatar
+                    avatar,
+                    typeAuth: 'GOOGLE'
                 }
+            });
+            logger.info('google_user_created', {
+                user_id: user.id,
+                status_code: 201
+            });
+        } else {
+            // Update typeAuth thành GOOGLE khi login lại
+            user = await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    typeAuth: 'GOOGLE',
+                    googleId: googleId, // Update googleId nếu chưa có
+                    avatar: avatar || user.avatar // Update avatar nếu Google có avatar mới
+                }
+            });
+            logger.info('google_login_success', {
+                user_id: user.id,
+                auth_provider: 'GOOGLE',
+                status_code: 200
             });
         }
 
@@ -206,10 +240,20 @@ const getUserById = async (userId) => {
                 email: true,
                 avatar: true,
                 role: true,
-                createdAt: true
+                typeAuth: true,
+                createdAt: true,
+                password: true // Lấy để check, nhưng sẽ không trả về
             }
         });
-        return user;
+        
+        if (!user) return null;
+        
+        // Trả về user info với flag hasPassword, không trả về password thật
+        const { password, ...userWithoutPassword } = user;
+        return {
+            ...userWithoutPassword,
+            hasPassword: !!password // Convert to boolean
+        };
     } catch (error) {
         throw new Error("Error fetching user: " + error.message);
     }

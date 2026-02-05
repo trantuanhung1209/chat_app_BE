@@ -1,15 +1,16 @@
 import express from 'express'; 
 import passport from "passport";
 import authController from '../controllers/authContronller.js';
-import { authenticateRefreshToken, authenticateAccessToken } from '../middleware.js';
+import { authenticateAccessToken } from '../middleware.js';
+import { authLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
-// register route
-router.post('/register', authController.register);
+// register route (giới hạn 5 lần/15 phút)
+router.post('/register', authLimiter, authController.register);
 
-// login route
-router.post('/login', authController.login);
+// login route (giới hạn 5 lần/15 phút)
+router.post('/login', authLimiter, authController.login);
 
 // logout route
 router.post('/logout', authController.logout);

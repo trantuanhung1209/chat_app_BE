@@ -103,6 +103,9 @@ function initializeEventListeners() {
             sendMessage();
         }
     });
+    
+    // Set Password Form
+    document.getElementById('setPasswordForm')?.addEventListener('submit', handleSetPassword);
 }
 
 // Auth Functions
@@ -229,7 +232,11 @@ async function fetchCurrentUser() {
         
         if (response.ok) {
             const data = await response.json();
-            currentUser = data.user || data;
+            currentUser = data.user || data.data || data;
+            // Thêm alias username từ fullName để tương thích với code cũ
+            if (currentUser.fullName && !currentUser.username) {
+                currentUser.username = currentUser.fullName;
+            }
             updateUserInfo();
             showPage('app-page');
             loadFriends();
@@ -647,6 +654,14 @@ function displayProfile() {
     document.getElementById('profileEmail').textContent = currentUser.email;
     document.getElementById('profileRole').textContent = currentUser.role || 'User';
     document.getElementById('profileCreatedAt').textContent = new Date(currentUser.createdAt).toLocaleDateString('vi-VN');
+    
+    // Kiểm tra nếu user login bằng Google và chưa có password
+    const passwordWarning = document.getElementById('passwordWarning');
+    if (currentUser.typeAuth === 'GOOGLE' && !currentUser.hasPassword) {
+        passwordWarning.style.display = 'flex';
+    } else {
+        passwordWarning.style.display = 'none';
+    }
 }
 
 function filterFriends(query) {
@@ -705,6 +720,55 @@ function sendMessage() {
     // Placeholder - Backend cần implement chat API
     showToast('Tính năng chat đang được phát triển', 'warning');
     input.value = '';
+}
+
+// Set Password Handler
+async function handleSetPassword(e) {
+    e.preventDefault();
+    
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    
+    if (newPassword !== confirmPassword) {
+        showToast('Mật khẩu không khớp!', 'error');
+        return;
+    }
+    
+    if (newPassword.length < 6) {
+        showToast('Mật khẩu phải có ít nhất 6 ký tự!', 'error');
+        return;
+    }
+    
+    try {
+        // Gọi API register để set password (backend sẽ update user nếu đã tồn tại)
+        const response = await fetch(`${API_URL}/auth/register`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+                fullName: currentUser.username,
+                email: currentUser.email,
+                password: newPassword,
+                avatar: currentUser.avatar
+            }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            showToast('Đặt mật khẩu thành công!', 'success');
+            // Cập nhật lại thông tin user
+            await fetchCurrentUser();
+            // Form sẽ tự động ẩn vì displayProfile() được gọi lại
+        } else {
+            showToast(data.message || 'Có lỗi xảy ra', 'error');
+        }
+    } catch (error) {
+        console.error('Password setup error:', error);
+        showToast('Có lỗi xảy ra khi đặt mật khẩu', 'error');
+    }
 }
 
 // Utility Functions

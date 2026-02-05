@@ -55,7 +55,38 @@ const deleteUserById = async (req, res) => {
 const updateUserById = async (req, res) => {
     try {
         const userId = req.params.id;
-        const updateData = req.body;
+        
+        // Danh sách các field được phép update
+        const allowedFields = ['fullName', 'avatar'];
+        
+        // Kiểm tra xem có field nào không được phép không
+        const requestFields = Object.keys(req.body);
+        const invalidFields = requestFields.filter(field => !allowedFields.includes(field));
+        
+        if (invalidFields.length > 0) {
+            return errorResponse(res, 400, `Fields not allowed to update: ${invalidFields.join(', ')}. Only fullName and avatar can be updated.`);
+        }
+        
+        const { fullName, avatar } = req.body;
+        
+        // Validate fullName nếu có
+        if (fullName !== undefined && (!fullName || fullName.trim().length === 0)) {
+            return errorResponse(res, 400, 'Full name cannot be empty');
+        }
+        
+        // Tạo object chỉ chứa các field được phép
+        const updateData = {};
+        if (fullName !== undefined) {
+            updateData.fullName = fullName;
+        }
+        if (avatar !== undefined) {
+            updateData.avatar = avatar;
+        }
+        
+        if (Object.keys(updateData).length === 0) {
+            return errorResponse(res, 400, 'No valid fields to update');
+        }
+        
         const updatedUser = await userServices.updateUserById(userId, updateData);
         return successResponse(res, 200, `User with id ${userId} updated successfully`, updatedUser);
     } catch (error) {
@@ -121,6 +152,5 @@ export default {
     deleteUserById,
     updateUserById,
     getUserById,
-    getUserByName,
     searchUsers
 };
