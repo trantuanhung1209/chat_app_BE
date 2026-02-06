@@ -1,0 +1,191 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum authProvider {
+  EMAIL
+  GOOGLE
+}
+
+enum FriendStatus {
+  pending
+  accepted
+  rejected
+  blocked
+}
+
+model FriendRequest {
+  id         String   @id @default(uuid())
+  sender     User     @relation("SentRequests", fields: [senderId], references: [id])
+  senderId   String
+  receiver   User     @relation("ReceivedRequests", fields: [receiverId], references: [id])
+  receiverId String
+  status     FriendStatus @default(pending)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model TokenBlacklist {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+model PasswordReset {
+  id        String   @id @default(uuid())
+  email     String
+  otp       String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  
+  @@index([email])
+}
+
+// Thêm vào cuối file sau model PasswordReset
+
+// Enum cho role trong conversation
+enum ParticipantRole {
+  ADMIN
+  MEMBER
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  SYSTEM
+}
+
+model Conversation {
+  id              String    @id @default(uuid())
+  name            String?
+  avatar          String?
+  isGroup         Boolean   @default(false)
+  createdBy       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastMessageAt   DateTime?
+  
+  participants    ConversationParticipant[]
+  messages        Message[]
+}
+
+model ConversationParticipant {
+  id              String       @id @default(uuid())
+  conversationId  String
+  userId          String
+  joinedAt        DateTime     @default(now())
+  leftAt          DateTime?
+  role            ParticipantRole @default(MEMBER)
+  lastReadAt      DateTime?
+  
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@index([conversationId])
+}
+
+model Message {
+  id              String       @id @default(uuid())
+  conversationId  String
+  senderId        String
+  content         String?
+  type            MessageType  @default(TEXT)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  isEdited        Boolean      @default(false)
+  deletedAt       DateTime?
+  replyToId       String?
+  
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender          User         @relation(fields: [senderId], references: [id])
+  replyTo         Message?     @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies         Message[]    @relation("MessageReplies")
+  attachments     Attachment[]
+  reactions       Reaction[]
+  readReceipts    ReadReceipt[]
+  
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model Attachment {
+  id          String   @id @default(uuid())
+  messageId   String
+  filename    String
+  url         String
+  fileType    String
+  fileSize    Int
+  createdAt   DateTime @default(now())
+  
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  @@index([messageId])
+}
+
+model Reaction {
+  id          String   @id @default(uuid())
+  messageId   String
+  userId      String
+  emoji       String
+  createdAt   DateTime @default(now())
+  
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+}
+
+model ReadReceipt {
+  id          String   @id @default(uuid())
+  messageId   String
+  userId      String
+  readAt      DateTime @default(now())
+  
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String?
+  googleId  String?  @unique
+  fullName  String?
+  avatar    String?
+  bio       String?
+  isOnline  Boolean  @default(false)
+  lastSeen  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  role      String   @default("USER")
+  typeAuth  authProvider @default(EMAIL)
+  
+  sentRequests          FriendRequest[] @relation("SentRequests")
+  receivedRequests      FriendRequest[] @relation("ReceivedRequests")
+  conversationParticipants ConversationParticipant[]
+  messages              Message[]
+  reactions             Reaction[]
+  readReceipts          ReadReceipt[]
+}
