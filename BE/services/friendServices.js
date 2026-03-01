@@ -273,8 +273,23 @@ const getFriendsList = async (userId, skip, limit, sortField = 'createdAt', sort
         // Count total với filter
         const filteredTotal = users.length;
 
+        // Transform users into Friend structure with nested friend property
+        const friendsData = users.map(user => {
+            const friendRequest = friends.find(fr => 
+                fr.senderId === user.id || fr.receiverId === user.id
+            );
+            
+            return {
+                id: friendRequest.id,
+                userId: userId,
+                friendId: user.id,
+                createdAt: friendRequest.createdAt,
+                friend: user
+            };
+        });
+
         return {
-            data: users,
+            data: friendsData,
             total: filteredTotal,
             totalPages: Math.ceil(filteredTotal / limit),
             limit,
@@ -316,8 +331,14 @@ const getIncomingRequests = async (userId, skip = 0, limit = 10) => {
 
         return {
             data: requests.map(req => ({
-                requestId: req.id,
+                id: req.id,
+                senderId: req.senderId,
+                receiverId: req.receiverId,
+                status: req.status,
+                createdAt: req.createdAt,
+                updatedAt: req.updatedAt,
                 sender: req.sender,
+                receiver: null
             })),
             total,
             totalPages: Math.ceil(total / limit),
@@ -360,8 +381,14 @@ const getOutgoingRequests = async (userId, skip = 0, limit = 10) => {
 
         return {
             data: requests.map(req => ({
-                requestId: req.id,
-                receiver: req.receiver,
+                id: req.id,
+                senderId: req.senderId,
+                receiverId: req.receiverId,
+                status: req.status,
+                createdAt: req.createdAt,
+                updatedAt: req.updatedAt,
+                sender: null,
+                receiver: req.receiver
             })),
             total,
             totalPages: Math.ceil(total / limit),

@@ -35,6 +35,14 @@ export interface Message {
   content: string;
   type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'SYSTEM';
   replyToId?: string | null;
+  replyTo?: {
+    id: string;
+    content: string;
+    sender: {
+      id: string;
+      fullName: string;
+    };
+  };
   attachments?: Array<{
     filename: string;
     url: string;
@@ -42,6 +50,9 @@ export interface Message {
     fileSize: number;
   }>;
   isEdited: boolean;
+  isPinned: boolean;
+  pinnedAt?: string | null;
+  pinnedBy?: string | null;
   deletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -143,6 +154,16 @@ export interface MessageUpdatedEvent {
 
 export interface MessageDeletedEvent {
   messageId: string;
+  conversationId: string;
+}
+
+export interface MessagePinnedEvent {
+  message: Message;
+  conversationId: string;
+}
+
+export interface MessageUnpinnedEvent {
+  message: Message;
   conversationId: string;
 }
 

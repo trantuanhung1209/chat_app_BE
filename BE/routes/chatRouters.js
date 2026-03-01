@@ -31,6 +31,11 @@ router.delete('/messages/:messageId/reactions/:reactionId', authenticateAccessTo
 router.post('/messages/:messageId/read', authenticateAccessToken, chatController.markAsRead);
 router.put('/conversations/:conversationId/read', authenticateAccessToken, chatController.markConversationAsRead);
 
+// Pin message routes
+router.post('/messages/:messageId/pin', authenticateAccessToken, chatController.pinMessage);
+router.delete('/messages/:messageId/pin', authenticateAccessToken, chatController.unpinMessage);
+router.get('/conversations/:conversationId/pinned-messages', authenticateAccessToken, chatController.getPinnedMessages);
+
 // Search routes
 router.get('/search/messages', authenticateAccessToken, chatController.searchMessages);
 router.get('/search/conversations', authenticateAccessToken, chatController.searchConversations);

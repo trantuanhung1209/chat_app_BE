@@ -8,6 +8,7 @@ export const API_ENDPOINTS = {
   LOGOUT: '/auth/logout',
   REFRESH_TOKEN: '/auth/refresh-token',
   GET_ME: '/auth/me',
+  GOOGLE_AUTH: '/auth/google',
   
   // User
   ME: '/users/me',
@@ -36,6 +37,9 @@ export const API_ENDPOINTS = {
   MARK_AS_READ: '/chat/messages/:messageId/read',
   MARK_CONVERSATION_AS_READ: '/chat/conversations/:conversationId/read',
   SEARCH_MESSAGES: '/chat/search/messages',
+  PIN_MESSAGE: '/chat/messages/:messageId/pin',
+  UNPIN_MESSAGE: '/chat/messages/:messageId/pin',
+  GET_PINNED_MESSAGES: '/chat/conversations/:conversationId/pinned-messages',
 } as const;
 
 export const SOCKET_EVENTS = {
@@ -53,6 +57,8 @@ export const SOCKET_EVENTS = {
   NEW_MESSAGE: 'chat:new_message',
   MESSAGE_UPDATED: 'chat:message_updated',
   MESSAGE_DELETED: 'chat:message_deleted',
+  MESSAGE_PINNED: 'chat:message_pinned',
+  MESSAGE_UNPINNED: 'chat:message_unpinned',
   TYPING: 'chat:typing',
   STOP_TYPING: 'chat:stop_typing',
   USER_TYPING: 'chat:user_typing',

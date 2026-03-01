@@ -4,6 +4,8 @@ import type {
   NewMessageEvent,
   MessageUpdatedEvent,
   MessageDeletedEvent,
+  MessagePinnedEvent,
+  MessageUnpinnedEvent,
   TypingEvent,
   OnlineStatusEvent,
   ReactionEvent,
@@ -108,6 +110,14 @@ class SocketService {
 
   onMessageDeleted(callback: (data: MessageDeletedEvent) => void): void {
     this.on(SOCKET_EVENTS.MESSAGE_DELETED, (data: unknown) => callback(data as MessageDeletedEvent));
+  }
+
+  onMessagePinned(callback: (data: MessagePinnedEvent) => void): void {
+    this.on(SOCKET_EVENTS.MESSAGE_PINNED, (data: unknown) => callback(data as MessagePinnedEvent));
+  }
+
+  onMessageUnpinned(callback: (data: MessageUnpinnedEvent) => void): void {
+    this.on(SOCKET_EVENTS.MESSAGE_UNPINNED, (data: unknown) => callback(data as MessageUnpinnedEvent));
   }
 
   onUserTyping(callback: (data: TypingEvent) => void): void {

@@ -1,6 +1,7 @@
 import chatServices from '../services/chatServices.js';
 import { successResponse, errorResponse } from '../helpers/responseHelper.js';
 import { validateCreateConversation, validateSendMessage, validateAddParticipants } from '../dtos/chat.js';
+import logger from '../config/logger.js';
 
 // ==================== CONVERSATION ====================
 const getConversations = async (req, res) => {
@@ -280,6 +281,58 @@ const searchConversations = async (req, res) => {
     }
 };
 
+// ==================== PIN MESSAGE ====================
+const pinMessage = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const { messageId } = req.params;
+        
+        if (!userId) {
+            logger.error('pin_message_no_user_id', { messageId });
+            return errorResponse(res, 401, 'User not authenticated');
+        }
+        
+        if (!messageId) {
+            return errorResponse(res, 400, 'Message ID is required');
+        }
+        
+        logger.info('pin_message_attempt', { messageId, userId });
+        const message = await chatServices.pinMessage(messageId, userId);
+        return successResponse(res, 200, 'Message pinned successfully', message);
+    } catch (error) {
+        logger.error('pin_message_error', { 
+            messageId: req.params.messageId, 
+            userId: req.user?.id, 
+            error: error.message 
+        });
+        return errorResponse(res, error.message.includes('not found') ? 404 : 403, error.message);
+    }
+};
+
+const unpinMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { messageId } = req.params;
+        
+        const message = await chatServices.unpinMessage(messageId, userId);
+        return successResponse(res, 200, 'Message unpinned successfully', message);
+    } catch (error) {
+        return errorResponse(res, error.message.includes('not found') ? 404 : 403, error.message);
+    }
+};
+
+const getPinnedMessages = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { conversationId } = req.params;
+        
+        const messages = await chatServices.getPinnedMessages(conversationId, userId);
+        return successResponse(res, 200, 'Pinned messages retrieved successfully', messages);
+    } catch (error) {
+        return errorResponse(res, error.message.includes('not found') ? 404 : 403, error.message);
+    }
+};
+
 export default {
     getConversations,
     getConversationById,
@@ -299,5 +352,8 @@ export default {
     markAsRead,
     markConversationAsRead,
     searchMessages,
-    searchConversations
+    searchConversations,
+    pinMessage,
+    unpinMessage,
+    getPinnedMessages
 };

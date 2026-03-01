@@ -111,6 +111,9 @@ model Message {
   isEdited        Boolean      @default(false)
   deletedAt       DateTime?
   replyToId       String?
+  isPinned        Boolean      @default(false)
+  pinnedAt        DateTime?
+  pinnedBy        String?
   
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender          User         @relation(fields: [senderId], references: [id])
@@ -123,6 +126,7 @@ model Message {
   @@index([conversationId])
   @@index([senderId])
   @@index([createdAt])
+  @@index([isPinned])
 }
 
 model Attachment {

@@ -8,16 +8,22 @@ interface ChatContextType {
   conversations: Conversation[];
   activeConversation: Conversation | null;
   messages: Message[];
+  pinnedMessages: Message[];
+  replyToMessage: Message | null;
   isLoadingConversations: boolean;
   isLoadingMessages: boolean;
   typingUsers: Map<string, string[]>;
   
   setActiveConversation: (conversation: Conversation | null) => void;
+  setReplyToMessage: (message: Message | null) => void;
   loadConversations: () => Promise<void>;
   loadMessages: (conversationId: string, page?: number) => Promise<void>;
-  sendMessage: (content: string, conversationId: string) => Promise<Message>;
+  loadPinnedMessages: (conversationId: string) => Promise<void>;
+  sendMessage: (content: string, conversationId: string, replyToId?: string) => Promise<Message>;
   editMessage: (messageId: string, content: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
+  pinMessage: (messageId: string) => Promise<void>;
+  unpinMessage: (messageId: string) => Promise<void>;
   sendTyping: (conversationId: string) => void;
   sendStopTyping: (conversationId: string) => void;
   markConversationAsRead: (conversationId: string) => Promise<void>;
@@ -30,6 +36,8 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Map<string, string[]>>(new Map());
@@ -70,6 +78,16 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
+  const loadPinnedMessages = useCallback(async (conversationId: string) => {
+    try {
+      const pinnedMsgs = await chatService.getPinnedMessages(conversationId);
+      setPinnedMessages(pinnedMsgs);
+    } catch (error) {
+      console.error('Failed to load pinned messages:', error);
+      setPinnedMessages([]);
+    }
+  }, []);
+
   // Load conversations on mount
   useEffect(() => {
     if (isAuthenticated) {
@@ -81,10 +99,14 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     if (activeConversation) {
       loadMessages(activeConversation.id);
+      loadPinnedMessages(activeConversation.id);
+      setReplyToMessage(null); // Clear reply when switching conversations
     } else {
       setMessages([]);
+      setPinnedMessages([]);
+      setReplyToMessage(null);
     }
-  }, [activeConversation, loadMessages]);
+  }, [activeConversation, loadMessages, loadPinnedMessages]);
 
   // Setup socket listeners
   useEffect(() => {
@@ -93,6 +115,9 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // New message
     socketService.onNewMessage((data) => {
       const { message, conversationId } = data;
+      
+      // Skip if this message was sent by current user (already added via optimistic update)
+      if (message.senderId === user?.id) return;
       
       // Add to messages if it's for active conversation
       if (activeConversation?.id === conversationId) {
@@ -121,6 +146,25 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     socketService.onMessageDeleted((data) => {
       const { messageId } = data;
       setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+      setPinnedMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+    });
+
+    // Message pinned
+    socketService.onMessagePinned((data) => {
+      const { message } = data;
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === message.id ? message : msg))
+      );
+      setPinnedMessages((prev) => [message, ...prev]);
+    });
+
+    // Message unpinned
+    socketService.onMessageUnpinned((data) => {
+      const { message } = data;
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === message.id ? message : msg))
+      );
+      setPinnedMessages((prev) => prev.filter((msg) => msg.id !== message.id));
     });
 
     // Typing events
@@ -155,16 +199,19 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       socketService.off('chat:new_message');
       socketService.off('chat:message_updated');
       socketService.off('chat:message_deleted');
+      socketService.off('chat:message_pinned');
+      socketService.off('chat:message_unpinned');
       socketService.off('chat:user_typing');
       socketService.off('chat:user_stop_typing');
     };
   }, [isAuthenticated, activeConversation, user]);
 
-  const sendMessage = async (content: string, conversationId: string) => {
+  const sendMessage = async (content: string, conversationId: string, replyToId?: string) => {
     try {
       const newMessage = await chatService.sendMessage(conversationId, {
         content,
         type: 'TEXT',
+        replyToId,
       });
       
       // Add message to state immediately (optimistic update)
@@ -180,6 +227,9 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             : conv
         )
       );
+      
+      // Clear reply state after sending
+      setReplyToMessage(null);
       
       return newMessage;
     } catch (error) {
@@ -204,8 +254,42 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       await chatService.deleteMessage(messageId);
       setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+      setPinnedMessages((prev) => prev.filter((msg) => msg.id !== messageId));
     } catch (error) {
       console.error('Failed to delete message:', error);
+      throw error;
+    }
+  };
+
+  const pinMessage = async (messageId: string) => {
+    try {
+      const pinnedMsg = await chatService.pinMessage(messageId);
+      // Update in messages list
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === messageId ? pinnedMsg : msg))
+      );
+      // Add to pinned messages (if not already there via socket)
+      setPinnedMessages((prev) => {
+        if (prev.some((msg) => msg.id === messageId)) return prev;
+        return [pinnedMsg, ...prev];
+      });
+    } catch (error) {
+      console.error('Failed to pin message:', error);
+      throw error;
+    }
+  };
+
+  const unpinMessage = async (messageId: string) => {
+    try {
+      const unpinnedMsg = await chatService.unpinMessage(messageId);
+      // Update in messages list
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === messageId ? unpinnedMsg : msg))
+      );
+      // Remove from pinned messages
+      setPinnedMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+    } catch (error) {
+      console.error('Failed to unpin message:', error);
       throw error;
     }
   };
@@ -237,15 +321,21 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         conversations,
         activeConversation,
         messages,
+        pinnedMessages,
+        replyToMessage,
         isLoadingConversations,
         isLoadingMessages,
         typingUsers,
         setActiveConversation,
+        setReplyToMessage,
         loadConversations,
         loadMessages,
+        loadPinnedMessages,
         sendMessage,
         editMessage,
         deleteMessage,
+        pinMessage,
+        unpinMessage,
         sendTyping,
         sendStopTyping,
         markConversationAsRead,

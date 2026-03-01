@@ -637,7 +637,10 @@ const sendMessage = async (conversationId, messageData) => {
     });
 
     allParticipants.forEach(p => {
-        io.to(`user:${p.userId}`).emit('message:new', message);
+        io.to(`user:${p.userId}`).emit('chat:new_message', { 
+            message, 
+            conversationId 
+        });
     });
 
     logger.info('message_sent', {
@@ -691,7 +694,7 @@ const editMessage = async (messageId, userId, content) => {
     });
 
     participants.forEach(p => {
-        io.to(`user:${p.userId}`).emit('message:edited', message);
+        io.to(`user:${p.userId}`).emit('chat:message_updated', { message });
     });
 
     return message;
@@ -724,7 +727,7 @@ const deleteMessage = async (messageId, userId) => {
     });
 
     participants.forEach(p => {
-        io.to(`user:${p.userId}`).emit('message:deleted', { messageId });
+        io.to(`user:${p.userId}`).emit('chat:message_deleted', { messageId });
     });
 
     logger.info('message_deleted', {
@@ -773,7 +776,7 @@ const addReaction = async (messageId, userId, emoji) => {
     });
 
     message.conversation.participants.forEach(p => {
-        io.to(`user:${p.userId}`).emit('message:reaction_added', {
+        io.to(`user:${p.userId}`).emit('chat:reaction_added', {
             messageId,
             reaction
         });
@@ -807,7 +810,7 @@ const removeReaction = async (reactionId, messageId, userId) => {
     });
 
     message.conversation.participants.forEach(p => {
-        io.to(`user:${p.userId}`).emit('message:reaction_removed', {
+        io.to(`user:${p.userId}`).emit('chat:reaction_removed', {
             messageId,
             reactionId
         });
@@ -849,7 +852,7 @@ const markAsRead = async (messageId, userId) => {
         include: { sender: true }
     });
 
-    io.to(`user:${message.senderId}`).emit('message:read', {
+    io.to(`user:${message.senderId}`).emit('chat:message_read', {
         messageId,
         userId,
         readAt: receipt.readAt
@@ -1052,6 +1055,263 @@ const searchConversations = async (userId, query, page = 1, limit = 20) => {
     };
 };
 
+// ==================== PIN MESSAGE ====================
+const pinMessage = async (messageId, userId) => {
+    logger.info('pin_message_start', { messageId, userId });
+    
+    // Check if message exists
+    const message = await prisma.message.findUnique({
+        where: { id: messageId }
+    });
+
+    if (!message) {
+        logger.error('pin_message_not_found', { messageId });
+        throw new Error('Message not found');
+    }
+
+    logger.info('pin_message_found', { 
+        messageId, 
+        conversationId: message.conversationId,
+        senderId: message.senderId 
+    });
+
+    // Check if user is participant of the conversation
+    const participant = await prisma.conversationParticipant.findFirst({
+        where: {
+            conversationId: message.conversationId,
+            userId: userId,
+            leftAt: null
+        }
+    });
+
+    logger.info('pin_message_participant_check', { 
+        messageId, 
+        userId,
+        conversationId: message.conversationId,
+        participantFound: !!participant,
+        participantId: participant?.id 
+    });
+
+    if (!participant) {
+        // Log for debugging
+        logger.error('pin_message_participant_check_failed', {
+            messageId,
+            userId,
+            conversationId: message.conversationId
+        });
+        
+        // Check if user is participant but has left
+        const leftParticipant = await prisma.conversationParticipant.findFirst({
+            where: {
+                conversationId: message.conversationId,
+                userId: userId
+            }
+        });
+        
+        logger.info('pin_message_left_participant_check', { 
+            messageId, 
+            userId,
+            leftParticipantFound: !!leftParticipant,
+            leftParticipantLeftAt: leftParticipant?.leftAt 
+        });
+        
+        if (leftParticipant && leftParticipant.leftAt) {
+            throw new Error('You have left this conversation');
+        }
+        
+        throw new Error('You are not a participant of this conversation');
+    }
+
+    if (message.deletedAt) {
+        throw new Error('Cannot pin deleted message');
+    }
+
+    if (message.isPinned) {
+        throw new Error('Message is already pinned');
+    }
+
+    // Update message to pinned
+    const updatedMessage = await prisma.message.update({
+        where: { id: messageId },
+        data: {
+            isPinned: true,
+            pinnedAt: new Date(),
+            pinnedBy: userId
+        },
+        include: {
+            sender: {
+                select: {
+                    id: true,
+                    fullName: true,
+                    avatar: true
+                }
+            },
+            replyTo: {
+                select: {
+                    id: true,
+                    content: true,
+                    sender: {
+                        select: {
+                            id: true,
+                            fullName: true
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Emit socket event
+    const io = getIO();
+    const participants = await prisma.conversationParticipant.findMany({
+        where: { conversationId: message.conversationId, leftAt: null }
+    });
+
+    participants.forEach(p => {
+        io.to(`user:${p.userId}`).emit('chat:message_pinned', { 
+            message: updatedMessage,
+            conversationId: message.conversationId
+        });
+    });
+
+    logger.info('message_pinned', {
+        message_id: messageId,
+        user_id: userId,
+        conversation_id: message.conversationId
+    });
+
+    return updatedMessage;
+};
+
+const unpinMessage = async (messageId, userId) => {
+    // Check if message exists
+    const message = await prisma.message.findUnique({
+        where: { id: messageId }
+    });
+
+    if (!message) {
+        throw new Error('Message not found');
+    }
+
+    // Check if user is participant of the conversation
+    const participant = await prisma.conversationParticipant.findFirst({
+        where: {
+            conversationId: message.conversationId,
+            userId: userId,
+            leftAt: null
+        }
+    });
+
+    if (!participant) {
+        throw new Error('You are not a participant of this conversation');
+    }
+
+    if (!message.isPinned) {
+        throw new Error('Message is not pinned');
+    }
+
+    // Update message to unpinned
+    const updatedMessage = await prisma.message.update({
+        where: { id: messageId },
+        data: {
+            isPinned: false,
+            pinnedAt: null,
+            pinnedBy: null
+        },
+        include: {
+            sender: {
+                select: {
+                    id: true,
+                    fullName: true,
+                    avatar: true
+                }
+            },
+            replyTo: {
+                select: {
+                    id: true,
+                    content: true,
+                    sender: {
+                        select: {
+                            id: true,
+                            fullName: true
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Emit socket event
+    const io = getIO();
+    const participants = await prisma.conversationParticipant.findMany({
+        where: { conversationId: message.conversationId, leftAt: null }
+    });
+
+    participants.forEach(p => {
+        io.to(`user:${p.userId}`).emit('chat:message_unpinned', { 
+            message: updatedMessage,
+            conversationId: message.conversationId
+        });
+    });
+
+    logger.info('message_unpinned', {
+        message_id: messageId,
+        user_id: userId,
+        conversation_id: message.conversationId
+    });
+
+    return updatedMessage;
+};
+
+const getPinnedMessages = async (conversationId, userId) => {
+    // Check if user is participant
+    const participant = await prisma.conversationParticipant.findFirst({
+        where: {
+            conversationId,
+            userId,
+            leftAt: null
+        }
+    });
+
+    if (!participant) {
+        throw new Error('You are not a participant of this conversation');
+    }
+
+    const pinnedMessages = await prisma.message.findMany({
+        where: {
+            conversationId,
+            isPinned: true,
+            deletedAt: null
+        },
+        include: {
+            sender: {
+                select: {
+                    id: true,
+                    fullName: true,
+                    avatar: true
+                }
+            },
+            replyTo: {
+                select: {
+                    id: true,
+                    content: true,
+                    sender: {
+                        select: {
+                            id: true,
+                            fullName: true
+                        }
+                    }
+                }
+            }
+        },
+        orderBy: {
+            pinnedAt: 'desc'
+        }
+    });
+
+    return pinnedMessages;
+};
+
 export default {
     getConversations,
     getConversationById,
@@ -1071,5 +1331,8 @@ export default {
     markAsRead,
     markConversationAsRead,
     searchMessages,
-    searchConversations
+    searchConversations,
+    pinMessage,
+    unpinMessage,
+    getPinnedMessages
 };

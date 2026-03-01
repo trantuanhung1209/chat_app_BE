@@ -26,7 +26,7 @@ const FriendsList: React.FC = () => {
     try {
       // Create or get direct conversation with friend
       const conversation = await chatService.createConversation({
-        type: 'direct',
+        isGroup: false,
         participantIds: [friend.friendId],
       });
       setActiveConversation(conversation);

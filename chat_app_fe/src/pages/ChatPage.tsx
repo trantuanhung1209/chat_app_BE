@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useFriend } from '../contexts/FriendContext';
 import ConversationList from '../components/Chat/ConversationList';
@@ -17,6 +18,21 @@ const ChatPage: React.FC = () => {
   const { activeConversation } = useChat();
   const { incomingRequests } = useFriend();
   const [activeTab, setActiveTab] = useState<TabType>('messages');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showPasswordNotification, setShowPasswordNotification] = useState(false);
+
+  useEffect(() => {
+    const needSetPassword = searchParams.get('needSetPassword');
+    if (needSetPassword === 'true' && !showPasswordNotification) {
+      // Use setTimeout to avoid synchronous setState in effect
+      setTimeout(() => {
+        setShowPasswordNotification(true);
+      }, 0);
+      // Xóa query param sau khi đã hiển thị
+      searchParams.delete('needSetPassword');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, showPasswordNotification]);
 
   const getDisplayName = () => {
     if (!activeConversation) return '';
@@ -54,6 +70,33 @@ const ChatPage: React.FC = () => {
           <span className="font-medium">{user?.fullName}</span>
         </div>
       </nav>
+
+      {/* Google Login Notification */}
+      {showPasswordNotification && (
+        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <p className="text-sm font-medium text-blue-900">
+                Đăng nhập Google thành công! 🎉
+              </p>
+              <p className="text-xs text-blue-700">
+                Bạn có thể đặt mật khẩu để đăng nhập bằng email sau này.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowPasswordNotification(false)}
+            className="text-blue-500 hover:text-blue-700 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden flex">

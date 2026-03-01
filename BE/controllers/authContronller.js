@@ -189,9 +189,9 @@ const googleOAuthCallback = async (req, res) => {
     });
 
     // Redirect về FE với flag needSetPassword nếu cần (cookies đã được set)
-    const frontendURL = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5173';
     const needSetPassword = !user.password ? 'true' : 'false';
-    return res.redirect(`${frontendURL}/FE/login.html?needSetPassword=${needSetPassword}`);
+    return res.redirect(`${frontendURL}/chat?needSetPassword=${needSetPassword}`);
 };
 
 export default { register, login, logout, refreshToken, googleOAuthCallback, getMe };

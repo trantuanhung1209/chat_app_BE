@@ -86,7 +86,7 @@ app.use('/friends', authenticateAccessToken, friendRoutes);
 app.use('/auth', authRoutes);
 app.use('/password-reset', passwordResetRoutes);
 app.use('/change-password', changePasswordRoutes);
-app.use('/chat', authenticateAccessToken, chatRoutes);
+app.use('/chat', chatRoutes);
 
 // ================= EXPRESS SERVER (port 3000) =================
 app.listen(API_PORT, () => {

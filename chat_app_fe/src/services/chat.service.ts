@@ -32,8 +32,9 @@ export const chatService = {
   },
 
   createConversation: async (data: {
-    type: 'direct' | 'group';
+    isGroup: boolean;
     name?: string;
+    avatar?: string;
     participantIds: string[];
   }): Promise<Conversation> => {
     const response = await api.post<ApiResponse<Conversation>>(
@@ -132,6 +133,28 @@ export const chatService = {
     const response = await api.get<ApiResponse<Message[]>>(API_ENDPOINTS.SEARCH_MESSAGES, {
       params: { query, conversationId },
     });
+    return response.data.data!;
+  },
+
+  // Pin/Unpin messages
+  pinMessage: async (messageId: string): Promise<Message> => {
+    const response = await api.post<ApiResponse<Message>>(
+      API_ENDPOINTS.PIN_MESSAGE.replace(':messageId', messageId)
+    );
+    return response.data.data!;
+  },
+
+  unpinMessage: async (messageId: string): Promise<Message> => {
+    const response = await api.delete<ApiResponse<Message>>(
+      API_ENDPOINTS.UNPIN_MESSAGE.replace(':messageId', messageId)
+    );
+    return response.data.data!;
+  },
+
+  getPinnedMessages: async (conversationId: string): Promise<Message[]> => {
+    const response = await api.get<ApiResponse<Message[]>>(
+      API_ENDPOINTS.GET_PINNED_MESSAGES.replace(':conversationId', conversationId)
+    );
     return response.data.data!;
   },
 };
